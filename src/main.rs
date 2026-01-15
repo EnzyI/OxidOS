@@ -17,23 +17,19 @@ global_asm!(
 
 #[no_mangle]
 pub extern "C" fn _start() -> ! {
+    // Địa chỉ UART0 của VersatilePB
     let uart0 = 0x101f_1000 as *mut u8;
-    // Thanh ghi trạng thái (Flag Register) để kiểm tra UART có bận không
-    let uart_fr = 0x101f_1018 as *const u32;
-
-    let msg = b"ALIVE AND RUNNING!\n";
-
-    for &byte in msg {
+    
+    // In chữ "X" liên tục để dễ nhận diện
+    loop {
         unsafe {
-            // Đợi cho đến khi hàng đợi truyền (TX) không còn đầy
-            while (core::ptr::read_volatile(uart_fr) & 0x20) != 0 {}
-            // Ghi dữ liệu
-            core::ptr::write_volatile(uart0, byte);
+            core::ptr::write_volatile(uart0, b'X');
         }
+        // Thêm một vòng lặp chờ nhỏ để không làm nghẽn QEMU
+        for _ in 0..100000 { core::hint::spin_loop(); }
     }
-
-    loop {}
 }
+
 #[panic_handler]
 fn panic(_info: &core::panic::PanicInfo) -> ! {
     loop {}
