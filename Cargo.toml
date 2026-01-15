@@ -1,17 +1,12 @@
 [package]
 name = "oxidos"
 version = "0.1.0"
-authors = ["YourName <your@email.com>"]
 edition = "2021"
-description = "Một RTOS bảo mật viết bằng Rust để đối đầu với VxWorks"
-license = "Apache-2.0"
+authors = ["Enzyl"]
 
 [dependencies]
-# Các thư viện cơ bản cho hệ thống nhúng
-core = { version = "1.0.0", optional = true }
+# Tạm thời để trống hoặc chỉ để các thư viện thực sự cần như:
 compiler_builtins = { version = "0.1.0", features = ["mem"] }
 
 [profile.release]
-opt-level = "s"    # Tối ưu hóa dung lượng (Size) để nhỏ hơn VxWorks
-panic = "abort"    # Dừng ngay lập tức nếu lỗi để đảm bảo an toàn
-lto = true         # Link Time Optimization để code chạy nhanh nhất
+panic = "abort"
