@@ -40,9 +40,9 @@ impl SerialDevice for UartDriver {
 // 4. ĐIỂM KHỞI CHẠY OXIDOS
 #[no_mangle]
 pub extern "C" fn _start() -> ! {
-    // ĐỊA CHỈ QUAN TRỌNG: 0x0900_0000 là cổng UART của máy ảo 'virt' trong QEMU
-    // Thử địa chỉ này - đây là địa chỉ UART tiêu chuẩn của QEMU ARM Virt đời mới
-let console = UartDriver { address: 0x1000_0000 }; 
+    // Trong hàm _start của src/main.rs
+let console = UartDriver { address: 0x0900_0000 };
+
 
     
     // Gửi dữ liệu vào file log
