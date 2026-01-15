@@ -1,21 +1,18 @@
 #![no_std]
 #![no_main]
 
-use core::arch::global_asm;
 use core::panic::PanicInfo;
 
-global_asm!(
-    ".arm",
-    ".section .vector_table, \"ax\"",
-    ".global _reset",
-    "_reset:",
-    "ldr pc, =_start", // Lệnh này sẽ nằm ở đầu file bin
-    ".align 4"
-);
+// Ép Linker giữ lại đoạn này ở ngay đầu file
+#[link_section = ".vector_table"]
+#[no_mangle]
+pub static BOOT_VECTOR: [u32; 2] = [
+    0xe59ff000, // Lệnh ARM: ldr pc, [pc, #0]
+    _start as u32,
+];
 
 #[no_mangle]
 pub extern "C" fn _start() -> ! {
-    // Ghi trực tiếp vào UART
     let uart = 0x101f_1000 as *mut u8;
     for &byte in b"ALIVE\n" {
         unsafe { core::ptr::write_volatile(uart, byte); }
