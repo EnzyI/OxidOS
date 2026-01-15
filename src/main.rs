@@ -17,20 +17,20 @@ global_asm!(
 
 #[no_mangle]
 pub extern "C" fn _start() -> ! {
-    // UART0 của VersatilePB
-    let uart = 0x101f_1000 as *mut u8;
+    let uart0 = 0x101f_1000 as *mut u8;
+    // Thanh ghi trạng thái (Flag Register) để kiểm tra UART có bận không
+    let uart_fr = 0x101f_1018 as *const u32;
+
     let msg = b"ALIVE AND RUNNING!\n";
 
     for &byte in msg {
         unsafe {
-            core::ptr::write_volatile(uart, byte);
+            // Đợi cho đến khi hàng đợi truyền (TX) không còn đầy
+            while (core::ptr::read_volatile(uart_fr) & 0x20) != 0 {}
+            // Ghi dữ liệu
+            core::ptr::write_volatile(uart0, byte);
         }
     }
 
-    loop {}
-}
-
-#[panic_handler]
-fn panic(_info: &PanicInfo) -> ! {
     loop {}
 }
