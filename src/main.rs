@@ -4,18 +4,14 @@
 
 use core::panic::PanicInfo;
 
-// -------------------------------------------------------------------
-// 1. CẤU HÌNH PANIC (Khi hệ điều hành gặp lỗi nghiêm trọng)
-// -------------------------------------------------------------------
+// 1. XỬ LÝ LỖI HỆ THỐNG (PANIC)
 #[panic_handler]
 fn panic(_info: &PanicInfo) -> ! {
-    // Trong một OS thực thụ, đây là nơi ta in mã lỗi lên màn hình xanh
+    // Nếu có lỗi, in thông báo hoặc đứng im
     loop {}
 }
 
-// -------------------------------------------------------------------
-// 2. BẢN THIẾT KẾ DRIVER (Trait SerialDevice)
-// -------------------------------------------------------------------
+// 2. BẢN THIẾT KẾ DRIVER CHUNG
 pub trait SerialDevice {
     fn write_byte(&self, byte: u8);
     
@@ -26,9 +22,7 @@ pub trait SerialDevice {
     }
 }
 
-// -------------------------------------------------------------------
-// 3. TRIỂN KHAI UART DRIVER (Cho chip STM32/ARM giả lập)
-// -------------------------------------------------------------------
+// 3. CÀI ĐẶT UART CHO MÁY ẢO QEMU 'VIRT'
 struct UartDriver {
     address: u32,
 }
@@ -37,28 +31,26 @@ impl SerialDevice for UartDriver {
     fn write_byte(&self, byte: u8) {
         let ptr = self.address as *mut u8;
         unsafe {
-            // Dùng write_volatile để đảm bảo lệnh không bị trình biên dịch xóa
+            // Dùng write_volatile để ghi trực tiếp vào cổng UART của QEMU
             core::ptr::write_volatile(ptr, byte);
         }
     }
 }
 
-// -------------------------------------------------------------------
-// 4. ĐIỂM KHỞI ĐẦU CỦA OXIDOS (Entry Point)
-// -------------------------------------------------------------------
+// 4. ĐIỂM KHỞI CHẠY OXIDOS
 #[no_mangle]
 pub extern "C" fn _start() -> ! {
-    // Địa chỉ UART1 thường gặp trên dòng Cortex-M (STM32)
-    let console = UartDriver { address: 0x4001_1004 };
+    // ĐỊA CHỈ QUAN TRỌNG: 0x0900_0000 là cổng UART của máy ảo 'virt' trong QEMU
+    let console = UartDriver { address: 0x0900_0000 };
     
-    // Xuất lời chào "thương hiệu" của OxidOS
-    console.write_str("\n--- OxidOS v0.1.0 ---\n");
-    console.write_str("Status: Hardened & Secure Kernel booting...\n");
-    console.write_str("Architecture: ARM Cortex-M4\n");
-    console.write_str("System Ready.\n");
+    // Gửi dữ liệu vào file log
+    console.write_str("\n==============================\n");
+    console.write_str("   OxidOS v0.1.0 IS ALIVE!    \n");
+    console.write_str("==============================\n");
+    console.write_str("Status: Kernel running on QEMU Virt\n");
+    console.write_str("Security: Rust memory safety active\n");
 
-    // Vòng lặp chính của nhân hệ điều hành
     loop {
-        // Sau này ta sẽ xử lý các tác vụ (Tasks) ở đây
+        // CPU sẽ nghỉ ngơi ở đây sau khi in xong
     }
 }
