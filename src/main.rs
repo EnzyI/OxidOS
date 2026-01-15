@@ -40,8 +40,9 @@ impl SerialDevice for UartDriver {
 // 4. ĐIỂM KHỞI CHẠY OXIDOS
 #[no_mangle]
 pub extern "C" fn _start() -> ! {
-    // Trong hàm _start của src/main.rs
-let console = UartDriver { address: 0x0900_0000 };
+    // Thử địa chỉ 0x101f1000 - Đây là địa chỉ UART của máy ảo 'versatilepb' 
+// vốn rất phổ biến trong giả lập ARM
+let console = UartDriver { address: 0x101f_1000 };
 
 
     
