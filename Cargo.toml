@@ -9,4 +9,4 @@ authors = ["Enzyl"]
 [profile.release]
 panic = "abort"
 [build-dependencies]
-cc = "1.0"
+
