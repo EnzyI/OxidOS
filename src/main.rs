@@ -45,6 +45,7 @@ pub extern "C" fn _start() -> ! {
 let console = UartDriver { address: 0x101f_1000 };
 
 
+
     
     // Gửi dữ liệu vào file log
     console.write_str("\n==============================\n");
