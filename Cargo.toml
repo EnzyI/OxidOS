@@ -5,8 +5,6 @@ edition = "2021"
 authors = ["Enzyl"]
 
 [dependencies]
-# Xóa bỏ các feature không cần thiết của compiler_builtins
-compiler_builtins = { version = "0.1", default-features = false }
 
 [profile.release]
 panic = "abort"
