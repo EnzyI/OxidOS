@@ -1,7 +1,8 @@
+[build]
+target = "thumbv7em-none-eabihf"
+
 [target.thumbv7em-none-eabihf]
 rustflags = [
-  "-C", "link-arg=-Tlink.x",
+    "-C", "link-arg=-Tlink.x",
+    "-C", "relocation-model=static",
 ]
-
-[build]
-target = "thumbv7em-none-eabihf" # Mặc định biên dịch cho chip ARM Cortex-M4
