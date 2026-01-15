@@ -1,25 +1,12 @@
 MEMORY
 {
-  /* Giả lập một con chip đơn giản với 256KB Flash và 64KB RAM */
-  FLASH : ORIGIN = 0x08000000, LENGTH = 256K
-  RAM   : ORIGIN = 0x20000000, LENGTH = 64K
+  /* Máy ảo Virt bắt đầu đọc bộ nhớ tại đây */
+  FLASH : ORIGIN = 0x40000000, LENGTH = 1M
+  RAM   : ORIGIN = 0x80000000, LENGTH = 1M
 }
 
 SECTIONS
 {
-  .vector_table :
-  {
-    LONG(ORIGIN(RAM) + LENGTH(RAM)); /* Điểm đầu của Stack pointer */
-    KEEP(*(.vector_table.reset_vector)); /* Reset vector */
-  } > FLASH
-
-  .text :
-  {
-    *(.text .text.*);
-  } > FLASH
-
-  /DISCARD/ :
-  {
-    *(.ARM.exidx .ARM.exidx.*);
-  }
+  .vector_table : { *(.vector_table) } > FLASH
+  .text : { *(.text) } > FLASH
 }
