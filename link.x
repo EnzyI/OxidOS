@@ -1,10 +1,13 @@
 ENTRY(_reset)
+MEMORY
+{
+  /* VersatilePB bắt đầu đọc từ địa chỉ 0 */
+  RAM : ORIGIN = 0, LENGTH = 128M
+}
 SECTIONS
 {
-    /* Ép mọi thứ bắt đầu từ 0x10000 của VersatilePB */
-    . = 0x10000;
-    .text : {
-        KEEP(*(.vector_table))
-        *(.text .text.*)
-    }
+  .text : {
+    KEEP(*(.vector_table)) 
+    *(.text .text.*)
+  } > RAM
 }
