@@ -1,4 +1,4 @@
-ENTRY(_reset) /* Bảo Linker bắt đầu từ file Assembly */
+ENTRY(_reset) /* Điểm vào là Assembly */
 
 MEMORY
 {
@@ -9,9 +9,7 @@ MEMORY
 SECTIONS
 {
   .text : {
-    KEEP(*(.vector_table)) /* Giữ lệnh nhảy ở vị trí đầu tiên */
+    KEEP(*(.vector_table)) /* Đặt lệnh nhảy của boot.s ở byte đầu tiên */
     *(.text .text.*)
   } > FLASH
-
-  .ARM.exidx : { *(.ARM.exidx*) } > FLASH
 }
