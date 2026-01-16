@@ -17,18 +17,16 @@ global_asm!(
 
 #[no_mangle]
 pub extern "C" fn _start() -> ! {
-    // Địa chỉ UART0 của VersatilePB
     let uart0 = 0x101f_1000 as *mut u8;
-    
-    // In chữ "X" liên tục để dễ nhận diện
     loop {
-        unsafe {
-            core::ptr::write_volatile(uart0, b'X');
+        for &byte in b"ALIVE! " {
+            unsafe { core::ptr::write_volatile(uart0, byte); }
         }
-        // Thêm một vòng lặp chờ nhỏ để không làm nghẽn QEMU
-        for _ in 0..100000 { core::hint::spin_loop(); }
+        // Vòng lặp chờ để Terminal không bị lag
+        for _ in 0..1000000 { core::hint::spin_loop(); }
     }
 }
+
 
 #[panic_handler]
 fn panic(_info: &core::panic::PanicInfo) -> ! {
