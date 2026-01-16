@@ -17,13 +17,14 @@ global_asm!(
 
 #[no_mangle]
 pub extern "C" fn _start() -> ! {
-    let uart0 = 0x101f_1000 as *mut u8;
+    // UART của Micro:bit (nRF51822) nằm ở 0x40002000
+    let uart0 = 0x40002008 as *mut u8; // Thanh ghi TXD
+    
     loop {
-        for &byte in b"ALIVE! " {
+        for &byte in b"ALIVE ON MICROBIT! " {
             unsafe { core::ptr::write_volatile(uart0, byte); }
         }
-        // Vòng lặp chờ để Terminal không bị lag
-        for _ in 0..1000000 { core::hint::spin_loop(); }
+        for _ in 0..100000 { core::hint::spin_loop(); }
     }
 }
 
