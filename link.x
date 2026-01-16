@@ -1,4 +1,4 @@
-ENTRY(_start)
+ENTRY(_reset_handler)
 SECTIONS
 {
     . = 0x0;
