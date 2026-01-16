@@ -5,22 +5,17 @@ use core::panic::PanicInfo;
 
 #[no_mangle]
 pub extern "C" fn _start() -> ! {
-    // Địa chỉ thanh ghi truyền dữ liệu UART trên nRF51 (Micro:bit)
-    let uart_txd = 0x40002508 as *mut u32;
-    // Thanh ghi bắt đầu truyền
-    let uart_starttx = 0x40002008 as *mut u32;
+    // UART0 trên máy lm3s6965evb nằm ở địa chỉ này
+    let uart0 = 0x4000_c000 as *mut u8;
 
-    unsafe {
-        // Bật UART truyền
-        core::ptr::write_volatile(uart_starttx, 1);
-        
-        loop {
-            for &byte in b"ALIVE\n" {
-                core::ptr::write_volatile(uart_txd, byte as u32);
-                // Đợi một chút để UART kịp gửi
-                for _ in 0..10000 { core::hint::spin_loop(); }
+    loop {
+        for &byte in b"ALIVE ON LM3S!\n" {
+            unsafe {
+                core::ptr::write_volatile(uart0, byte);
             }
         }
+        // Delay một chút
+        for _ in 0..500000 { core::hint::spin_loop(); }
     }
 }
 
