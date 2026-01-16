@@ -1,9 +1,9 @@
-ENTRY(_reset)
+ENTRY(_start)
 SECTIONS
 {
-    . = 0x10000; /* Địa chỉ nạp mặc định của QEMU cho VersatilePB */
+    . = 0x0;
     .text : {
-        KEEP(*(.vector_table))
+        KEEP(*(.vector_table)) /* Giữ bảng vector ở vị trí 0x0 */
         *(.text .text.*)
     }
 }
