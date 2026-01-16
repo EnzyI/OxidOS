@@ -4,18 +4,21 @@
 use core::panic::PanicInfo;
 use core::fmt::{Write, Result};
 
-// 1. Tạo cấu trúc UART
 struct Uart {
     base_ptr: *mut u8,
 }
 
-// 2. Triển khai Write cho Uart để dùng được macro write!
+impl Uart {
+    // Hàm đọc 1 byte từ bàn phím (UART nhận dữ liệu)
+    fn read_byte(&self) -> u8 {
+        unsafe { core::ptr::read_volatile(self.base_ptr) }
+    }
+}
+
 impl Write for Uart {
     fn write_str(&mut self, s: &str) -> Result {
         for byte in s.bytes() {
-            unsafe {
-                core::ptr::write_volatile(self.base_ptr, byte);
-            }
+            unsafe { core::ptr::write_volatile(self.base_ptr, byte); }
         }
         Ok(())
     }
@@ -23,27 +26,25 @@ impl Write for Uart {
 
 #[no_mangle]
 pub extern "C" fn _reset_handler() -> ! {
-    // Khởi tạo Driver với địa chỉ UART0 của máy LM3S
     let mut uart = Uart { base_ptr: 0x4000_c000 as *mut u8 };
 
-    // Bây giờ bro có thể in bất cứ thứ gì cực dễ dàng
-    let _ = write!(uart, "\n--- OXID OS BOOTING ---\n");
-    let _ = write!(uart, "Status: {}\n", "READY");
-    let _ = write!(uart, "System Time: {} ms\n", 2026);
-    let _ = write!(uart, "-----------------------\n");
+    // In menu có màu sắc (Màu xanh: \x1b[32m, Reset: \x1b[0m)
+    let _ = write!(uart, "\x1b[32m\n--- OXID OS LOADED SUCCESSFULLY ---\x1b[0m\n");
+    let _ = write!(uart, "\x1b[33m[SYSTEM]\x1b[0m Type something on your phone:\n");
 
     loop {
-        let _ = write!(uart, "ALIVE ");
-        for _ in 0..2000000 { core::hint::spin_loop(); }
+        // Đọc phím từ bro gõ vào
+        let key = uart.read_byte();
+        if key != 0 {
+            // In ngược lại phím đó ra màn hình (Echo)
+            let _ = write!(uart, "\x1b[36m{}\x1b[0m", key as char);
+        }
     }
 }
 
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
     let mut uart = Uart { base_ptr: 0x4000_c000 as *mut u8 };
-    let _ = write!(uart, "\n!!! KERNEL PANIC !!!\n");
-    if let Some(location) = info.location() {
-        let _ = write!(uart, "At: {}:{}\n", location.file(), location.line());
-    }
+    let _ = write!(uart, "\x1b[31m\n!!! KERNEL PANIC !!!\x1b[0m\n");
     loop {}
 }
