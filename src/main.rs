@@ -1,35 +1,30 @@
 #![no_std]
 #![no_main]
 
-use core::arch::global_asm;
 use core::panic::PanicInfo;
-
-// Dùng lệnh Thumb ngay từ đầu để khớp với target của bro
-global_asm!(
-    ".section .vector_table, \"ax\"",
-    ".global _reset",
-    ".thumb",                  // Ép dùng Thumb mode
-    "_reset:",
-    "ldr r0, =_start",         // Nạp địa chỉ hàm _start
-    "blx r0",                  // Nhảy vào Rust
-    ".align 4"
-);
 
 #[no_mangle]
 pub extern "C" fn _start() -> ! {
-    // UART của Micro:bit (nRF51822) nằm ở 0x40002000
-    let uart0 = 0x40002008 as *mut u8; // Thanh ghi TXD
-    
-    loop {
-        for &byte in b"ALIVE ON MICROBIT! " {
-            unsafe { core::ptr::write_volatile(uart0, byte); }
+    // Địa chỉ thanh ghi truyền dữ liệu UART trên nRF51 (Micro:bit)
+    let uart_txd = 0x40002508 as *mut u32;
+    // Thanh ghi bắt đầu truyền
+    let uart_starttx = 0x40002008 as *mut u32;
+
+    unsafe {
+        // Bật UART truyền
+        core::ptr::write_volatile(uart_starttx, 1);
+        
+        loop {
+            for &byte in b"ALIVE\n" {
+                core::ptr::write_volatile(uart_txd, byte as u32);
+                // Đợi một chút để UART kịp gửi
+                for _ in 0..10000 { core::hint::spin_loop(); }
+            }
         }
-        for _ in 0..100000 { core::hint::spin_loop(); }
     }
 }
 
-
 #[panic_handler]
-fn panic(_info: &core::panic::PanicInfo) -> ! {
+fn panic(_info: &PanicInfo) -> ! {
     loop {}
 }
