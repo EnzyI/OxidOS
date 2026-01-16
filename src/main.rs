@@ -5,7 +5,7 @@ use core::panic::PanicInfo;
 
 #[no_mangle]
 pub extern "C" fn _start() -> ! {
-    // UART0 trên máy lm3s6965evb nằm ở địa chỉ này
+    // Địa chỉ UART0 của máy Stellaris LM3S6965
     let uart0 = 0x4000_c000 as *mut u8;
 
     loop {
@@ -14,8 +14,8 @@ pub extern "C" fn _start() -> ! {
                 core::ptr::write_volatile(uart0, byte);
             }
         }
-        // Delay một chút
-        for _ in 0..500000 { core::hint::spin_loop(); }
+        // Vòng lặp chờ để không làm treo terminal điện thoại
+        for _ in 0..1000000 { core::hint::spin_loop(); }
     }
 }
 
