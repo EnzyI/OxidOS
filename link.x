@@ -1,13 +1,9 @@
 ENTRY(_reset)
-MEMORY
-{
-  /* VersatilePB bắt đầu đọc từ địa chỉ 0 */
-  RAM : ORIGIN = 0, LENGTH = 128M
-}
 SECTIONS
 {
-  .text : {
-    KEEP(*(.vector_table)) 
-    *(.text .text.*)
-  } > RAM
+    . = 0x10000; /* Địa chỉ nạp mặc định của QEMU cho VersatilePB */
+    .text : {
+        KEEP(*(.vector_table))
+        *(.text .text.*)
+    }
 }
