@@ -8,11 +8,19 @@ MEMORY
 
 SECTIONS
 {
-    . = 0x0;
-    .vector_table : { KEEP(*(.vector_table)) } > FLASH
-    .text : { *(.text .text.*) } > FLASH
+    /* Đặt bảng Vector cố định tại địa chỉ 0x0 */
+    .vector_table ORIGIN(FLASH) : {
+        LONG(0x20005000);        /* Top of Stack */
+        LONG(_reset_handler | 1); /* Reset Vector */
+        KEEP(*(.vector_table))
+    } > FLASH
 
-    /* Vùng nhớ Heap sẽ nằm sau vùng code */
-    _heap_start = .;
-    _heap_end = ORIGIN(RAM) + LENGTH(RAM);
+    .text : {
+        *(.text .text.*)
+    } > FLASH
+
+    /* Vùng RAM dành cho Allocator bắt đầu từ 0x20002000 */
+    .data : {
+        *(.data .data.*)
+    } > RAM AT > FLASH
 }
