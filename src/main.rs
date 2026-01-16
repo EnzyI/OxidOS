@@ -3,26 +3,23 @@
 
 use core::panic::PanicInfo;
 
-// Định nghĩa kiểu hàm để làm Vector Table
-type Handler = unsafe extern "C" fn() -> !;
-
+// Bảng Vector Table dùng u32 để trình biên dịch không báo lỗi pointer
 #[link_section = ".vector_table"]
 #[no_mangle]
-pub static MS_VECTOR_TABLE: [Option<Handler>; 2] = [
-    unsafe { core::mem::transmute(0x2000_5000usize) }, // Stack Pointer ban đầu
-    Some(_start),                                     // Reset Handler
+pub static MS_VECTOR_TABLE: [u32; 2] = [
+    0x2000_5000,               // 1. Initial Stack Pointer
+    _reset_handler as u32,     // 2. Reset Handler (Địa chỉ hàm khởi động)
 ];
 
 #[no_mangle]
-pub extern "C" fn _start() -> ! {
-    let uart0 = 0x4000_c000 as *mut u8;
+pub extern "C" fn _reset_handler() -> ! {
+    let uart0 = 0x4000_c000 as *mut u8; // UART cho máy LM3S
 
     loop {
         for &byte in b"ALIVE AT LAST!\n" {
-            unsafe {
-                core::ptr::write_volatile(uart0, byte);
-            }
+            unsafe { core::ptr::write_volatile(uart0, byte); }
         }
+        // Delay để terminal điện thoại kịp hiển thị
         for _ in 0..1000000 { core::hint::spin_loop(); }
     }
 }
