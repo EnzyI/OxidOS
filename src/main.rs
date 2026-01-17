@@ -6,9 +6,24 @@ extern crate alloc;
 use core::panic::PanicInfo;
 use core::fmt::Write;
 use core::alloc::{GlobalAlloc, Layout};
-use core::sync::atomic::{AtomicUsize, Ordering};
+use core::sync::atomic::{AtomicUsize, AtomicU32, Ordering};
 
-// --- BỘ CẤP PHÁT BỘ NHỚ ---
+// --- NHỊP TIM HỆ THỐNG ---
+static TICK_COUNT: AtomicU32 = AtomicU32::new(0);
+
+// Hàm này sẽ được CPU gọi tự động mỗi 10ms nhờ cấu hình trong Linker
+#[no_mangle]
+pub extern "C" fn SysTick_Handler() {
+    let count = TICK_COUNT.fetch_add(1, Ordering::SeqCst);
+    
+    // Cứ sau 100 nhịp (1 giây), in một dấu chấm vàng để báo OS đang sống
+    if count % 100 == 0 {
+        let mut uart = Uart { base_ptr: 0x4000_c000 as *mut u32 };
+        let _ = write!(uart, "\x1b[33m.\x1b[0m"); 
+    }
+}
+
+// --- BỘ CẤP PHÁT BỘ NHỚ (HEAP) ---
 struct BumpingAllocator { next: AtomicUsize }
 unsafe impl GlobalAlloc for BumpingAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
@@ -16,11 +31,21 @@ unsafe impl GlobalAlloc for BumpingAllocator {
     }
     unsafe fn dealloc(&self, _ptr: *mut u8, _layout: Layout) {}
 }
+
 #[global_allocator]
-static ALLOCATOR: BumpingAllocator = BumpingAllocator { next: AtomicUsize::new(0x2000_2000) };
+static ALLOCATOR: BumpingAllocator = BumpingAllocator { 
+    next: AtomicUsize::new(0x2000_2000) 
+};
 
 // --- DRIVER UART ---
 struct Uart { base_ptr: *mut u32 }
+impl Uart {
+    fn getc(&self) -> u8 {
+        let fr = unsafe { core::ptr::read_volatile(self.base_ptr.add(6)) };
+        if (fr & (1 << 4)) != 0 { return 0; }
+        unsafe { core::ptr::read_volatile(self.base_ptr) as u8 }
+    }
+}
 impl Write for Uart {
     fn write_str(&mut self, s: &str) -> core::fmt::Result {
         for byte in s.bytes() { unsafe { core::ptr::write_volatile(self.base_ptr, byte as u32); } }
@@ -28,25 +53,31 @@ impl Write for Uart {
     }
 }
 
-// --- KHỞI TẠO SYSTICK (NHỊP TIM) ---
+// --- KHỞI TẠO VÀ VÒNG LẶP CHÍNH ---
 fn init_systick(ticks: u32) {
     let systick_base = 0xE000_E010 as *mut u32;
     unsafe {
-        core::ptr::write_volatile(systick_base.add(1), ticks); // Reload
-        core::ptr::write_volatile(systick_base.add(2), 0);     // Clear current
-        core::ptr::write_volatile(systick_base, 0x07);        // Enable + Int + Source
+        core::ptr::write_volatile(systick_base.add(1), ticks);
+        core::ptr::write_volatile(systick_base.add(2), 0);
+        core::ptr::write_volatile(systick_base, 0x07); // Enable + Interrupt + Source
     }
 }
 
 #[no_mangle]
 pub extern "C" fn _reset_handler() -> ! {
     let mut uart = Uart { base_ptr: 0x4000_c000 as *mut u32 };
-    let _ = writeln!(uart, "\x1b[2J\x1b[H\x1b[32m[OXID RTOS]\x1b[0m SysTick starting...");
+    let _ = write!(uart, "\x1b[2J\x1b[H\x1b[32m[OXID RTOS]\x1b[0m Heartbeat active.\n> ");
     
-    init_systick(120_000); // 10ms heartbeat
-    
-    let _ = writeln!(uart, "[SYSTEM] Heartbeat is pulsing. OS is ALIVE.");
-    loop { unsafe { core::arch::asm!("wfi"); } }
+    init_systick(120_000); // Cài đặt nhịp 10ms
+
+    loop {
+        let key = uart.getc();
+        if key != 0 {
+            let _ = write!(uart, "\x1b[36m{}\x1b[0m", key as char);
+        }
+        // Cho CPU nghỉ ngơi để chờ ngắt SysTick
+        unsafe { core::arch::asm!("wfi"); }
+    }
 }
 
 #[alloc_error_handler] fn alloc_error(_layout: Layout) -> ! { loop {} }
