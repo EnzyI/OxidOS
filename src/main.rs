@@ -8,22 +8,19 @@ use core::fmt::Write;
 use core::alloc::{GlobalAlloc, Layout};
 use core::sync::atomic::{AtomicUsize, AtomicU32, Ordering};
 
-// --- NHỊP TIM HỆ THỐNG ---
+// --- QUẢN LÝ NHỊP TIM ---
 static TICK_COUNT: AtomicU32 = AtomicU32::new(0);
 
-// Hàm này sẽ được CPU gọi tự động mỗi 10ms nhờ cấu hình trong Linker
 #[no_mangle]
 pub extern "C" fn SysTick_Handler() {
     let count = TICK_COUNT.fetch_add(1, Ordering::SeqCst);
-    
-    // Cứ sau 100 nhịp (1 giây), in một dấu chấm vàng để báo OS đang sống
     if count % 100 == 0 {
         let mut uart = Uart { base_ptr: 0x4000_c000 as *mut u32 };
         let _ = write!(uart, "\x1b[33m.\x1b[0m"); 
     }
 }
 
-// --- BỘ CẤP PHÁT BỘ NHỚ (HEAP) ---
+// --- ALLOCATOR ---
 struct BumpingAllocator { next: AtomicUsize }
 unsafe impl GlobalAlloc for BumpingAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
@@ -31,13 +28,10 @@ unsafe impl GlobalAlloc for BumpingAllocator {
     }
     unsafe fn dealloc(&self, _ptr: *mut u8, _layout: Layout) {}
 }
-
 #[global_allocator]
-static ALLOCATOR: BumpingAllocator = BumpingAllocator { 
-    next: AtomicUsize::new(0x2000_2000) 
-};
+static ALLOCATOR: BumpingAllocator = BumpingAllocator { next: AtomicUsize::new(0x2000_2000) };
 
-// --- DRIVER UART ---
+// --- UART DRIVER ---
 struct Uart { base_ptr: *mut u32 }
 impl Uart {
     fn getc(&self) -> u8 {
@@ -53,29 +47,23 @@ impl Write for Uart {
     }
 }
 
-// --- KHỞI TẠO VÀ VÒNG LẶP CHÍNH ---
-fn init_systick(ticks: u32) {
-    let systick_base = 0xE000_E010 as *mut u32;
-    unsafe {
-        core::ptr::write_volatile(systick_base.add(1), ticks);
-        core::ptr::write_volatile(systick_base.add(2), 0);
-        core::ptr::write_volatile(systick_base, 0x07); // Enable + Interrupt + Source
-    }
-}
-
+// --- KHỞI ĐỘNG ---
 #[no_mangle]
 pub extern "C" fn _reset_handler() -> ! {
     let mut uart = Uart { base_ptr: 0x4000_c000 as *mut u32 };
     let _ = write!(uart, "\x1b[2J\x1b[H\x1b[32m[OXID RTOS]\x1b[0m Heartbeat active.\n> ");
     
-    init_systick(120_000); // Cài đặt nhịp 10ms
+    // Config SysTick: 120,000 ticks = 10ms (giả định 12MHz)
+    unsafe {
+        let systick = 0xE000_E010 as *mut u32;
+        core::ptr::write_volatile(systick.add(1), 120_000);
+        core::ptr::write_volatile(systick.add(2), 0);
+        core::ptr::write_volatile(systick, 0x07);
+    }
 
     loop {
         let key = uart.getc();
-        if key != 0 {
-            let _ = write!(uart, "\x1b[36m{}\x1b[0m", key as char);
-        }
-        // Cho CPU nghỉ ngơi để chờ ngắt SysTick
+        if key != 0 { let _ = write!(uart, "\x1b[36m{}\x1b[0m", key as char); }
         unsafe { core::arch::asm!("wfi"); }
     }
 }
