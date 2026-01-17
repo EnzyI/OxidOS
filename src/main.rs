@@ -8,7 +8,28 @@ use core::fmt::Write;
 use core::alloc::{GlobalAlloc, Layout};
 use core::sync::atomic::{AtomicUsize, AtomicU32, Ordering};
 
-// --- QUẢN LÝ NHỊP TIM ---
+// --- QUẢN LÝ BỘ NHỚ (HEAP) ---
+const HEAP_START: usize = 0x2000_2000;
+const HEAP_SIZE: usize = 32 * 1024; // 32KB cho RTOS
+
+struct BumpingAllocator { next: AtomicUsize }
+unsafe impl GlobalAlloc for BumpingAllocator {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        let current = self.next.load(Ordering::SeqCst);
+        if current + layout.size() > HEAP_START + HEAP_SIZE {
+            return core::ptr::null_mut(); 
+        }
+        self.next.fetch_add(layout.size(), Ordering::SeqCst) as *mut u8
+    }
+    unsafe fn dealloc(&self, _ptr: *mut u8, _layout: Layout) {}
+}
+
+#[global_allocator]
+static ALLOCATOR: BumpingAllocator = BumpingAllocator { 
+    next: AtomicUsize::new(HEAP_START) 
+};
+
+// --- NHỊP TIM HỆ THỐNG ---
 static TICK_COUNT: AtomicU32 = AtomicU32::new(0);
 
 #[no_mangle]
@@ -19,17 +40,6 @@ pub extern "C" fn SysTick_Handler() {
         let _ = write!(uart, "\x1b[33m.\x1b[0m"); 
     }
 }
-
-// --- BỘ CẤP PHÁT BỘ NHỚ ---
-struct BumpingAllocator { next: AtomicUsize }
-unsafe impl GlobalAlloc for BumpingAllocator {
-    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        self.next.fetch_add(layout.size(), Ordering::SeqCst) as *mut u8
-    }
-    unsafe fn dealloc(&self, _ptr: *mut u8, _layout: Layout) {}
-}
-#[global_allocator]
-static ALLOCATOR: BumpingAllocator = BumpingAllocator { next: AtomicUsize::new(0x2000_2000) };
 
 // --- UART DRIVER ---
 struct Uart { base_ptr: *mut u32 }
@@ -47,7 +57,7 @@ impl Write for Uart {
     }
 }
 
-// --- HÀM KHỞI TẠO SYSTICK (FIX LỖI E0425) ---
+// --- KHỞI TẠO ---
 fn init_systick(ticks: u32) {
     let systick_base = 0xE000_E010 as *mut u32;
     unsafe {
@@ -62,7 +72,7 @@ pub extern "C" fn _reset_handler() -> ! {
     let mut uart = Uart { base_ptr: 0x4000_c000 as *mut u32 };
     let _ = write!(uart, "\x1b[2J\x1b[H\x1b[32m[OXID RTOS v1.0]\x1b[0m\n> ");
     
-    init_systick(120_000); // Khởi tạo nhịp tim 10ms
+    init_systick(120_000); 
 
     let mut buffer = [0u8; 32]; 
     let mut pos = 0;
@@ -77,6 +87,11 @@ pub extern "C" fn _reset_handler() -> ! {
                     match cmd {
                         "cls" => { let _ = write!(uart, "\x1b[2J\x1b[H"); }
                         "ver" => { let _ = write!(uart, "OXID RTOS Kernel v1.0 (Rust)\n"); }
+                        "free" => {
+                            let used = ALLOCATOR.next.load(Ordering::SeqCst) - HEAP_START;
+                            let free = HEAP_SIZE - used;
+                            let _ = write!(uart, "Heap: {}/{} used ({} free)\n", used, HEAP_SIZE, free);
+                        }
                         _ => { if pos > 0 { let _ = write!(uart, "Unknown: {}\n", cmd); } }
                     }
                     pos = 0;
