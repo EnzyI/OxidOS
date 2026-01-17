@@ -52,22 +52,49 @@ impl Write for Uart {
 #[no_mangle]
 pub extern "C" fn _reset_handler() -> ! {
     let mut uart = Uart { base_ptr: 0x4000_c000 as *mut u32 };
-    let _ = write!(uart, "\x1b[2J\x1b[H\x1b[32m[OXID RTOS]\x1b[0m Heartbeat active.\n> ");
+    let _ = write!(uart, "\x1b[2J\x1b[H\x1b[32m[OXID RTOS v1.0]\x1b[0m System Ready.\n> ");
     
-    // Cấu hình SysTick (Nhịp tim hệ thống)
-    unsafe {
-        let systick = 0xE000_E010 as *mut u32;
-        core::ptr::write_volatile(systick.add(1), 120_000); // 10ms (12MHz)
-        core::ptr::write_volatile(systick.add(2), 0);       // Reset count
-        core::ptr::write_volatile(systick, 0x07);          // Bật ngắt
-    }
+    init_systick(120_000);
+
+    let mut buffer = [0u8; 32]; // Bộ đệm chứa lệnh 32 ký tự
+    let mut pos = 0;
 
     loop {
         let key = uart.getc();
-        if key != 0 { let _ = write!(uart, "\x1b[36m{}\x1b[0m", key as char); }
-        unsafe { core::arch::asm!("wfi"); } // Chờ nhịp tim tiếp theo
+        if key != 0 {
+            match key {
+                b'\r' | b'\n' => { // Khi nhấn ENTER
+                    let _ = write!(uart, "\n");
+                    let cmd = core::str::from_utf8(&buffer[..pos]).unwrap_or("");
+                    
+                    match cmd {
+                        "cls" => { let _ = write!(uart, "\x1b[2J\x1b[H"); }
+                        "ver" => { let _ = write!(uart, "OXID RTOS Kernel v1.0.0 (Rust)\n"); }
+                        _ => { if pos > 0 { let _ = write!(uart, "Unknown: {}\n", cmd); } }
+                    }
+                    
+                    pos = 0; // Reset bộ đệm
+                    let _ = write!(uart, "> ");
+                }
+                b'\x08' | b'\x7f' => { // Xử lý phím xóa (Backspace)
+                    if pos > 0 {
+                        pos -= 1;
+                        let _ = write!(uart, "\x08 \x08");
+                    }
+                }
+                _ => { // Lưu ký tự vào bộ đệm
+                    if pos < buffer.len() {
+                        buffer[pos] = key;
+                        pos += 1;
+                        let _ = write!(uart, "{}", key as char);
+                    }
+                }
+            }
+        }
+        unsafe { core::arch::asm!("wfi"); }
     }
 }
+
 
 #[alloc_error_handler] fn alloc_error(_layout: Layout) -> ! { loop {} }
 #[panic_handler] fn panic(_info: &PanicInfo) -> ! { loop {} }
