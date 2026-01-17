@@ -8,13 +8,11 @@ use core::fmt::{Write, Result};
 use core::alloc::{GlobalAlloc, Layout};
 use core::sync::atomic::{AtomicUsize, Ordering};
 
-// --- BẢNG VECTOR TABLE CỐ ĐỊNH ---
+// --- BẢNG VECTOR TABLE ---
+// Chúng ta để trống ở đây và sẽ điền vào bằng Linker để tránh lỗi "const eval"
 #[link_section = ".vector_table"]
 #[no_mangle]
-pub static VECTOR_TABLE: [u32; 2] = [
-    0x2000_5000,               // Stack Pointer
-    _reset_handler as u32 | 1, // Reset Handler + Thumb bit
-];
+pub static VECTOR_TABLE: [u32; 2] = [0; 2]; 
 
 // --- ALLOCATOR ---
 struct BumpingAllocator { next: AtomicUsize }
