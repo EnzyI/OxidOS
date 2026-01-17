@@ -3,7 +3,10 @@ SECTIONS
 {
     . = 0x00000000;
     .text : {
-        KEEP(*(.vector_table)) /* Bắt buộc bảng vector ở 0x0 */
+        /* Điền trực tiếp 8 byte đầu tiên cho CPU */
+        LONG(0x20005000);          /* 1. Stack Pointer */
+        LONG(_reset_handler | 1);  /* 2. Reset Vector */
+        
         *(.text .text.*)
     }
 }
