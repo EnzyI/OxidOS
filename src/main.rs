@@ -8,19 +8,20 @@ use core::fmt::Write;
 use core::alloc::{GlobalAlloc, Layout};
 use core::sync::atomic::{AtomicUsize, AtomicU32, Ordering};
 
-// --- QUẢN LÝ NHỊP TIM ---
+// --- QUẢN LÝ NHỊP TIM (HEARTBEAT) ---
 static TICK_COUNT: AtomicU32 = AtomicU32::new(0);
 
 #[no_mangle]
 pub extern "C" fn SysTick_Handler() {
     let count = TICK_COUNT.fetch_add(1, Ordering::SeqCst);
+    // In dấu chấm vàng mỗi 1 giây (100 nhịp * 10ms)
     if count % 100 == 0 {
         let mut uart = Uart { base_ptr: 0x4000_c000 as *mut u32 };
         let _ = write!(uart, "\x1b[33m.\x1b[0m"); 
     }
 }
 
-// --- ALLOCATOR ---
+// --- BỘ CẤP PHÁT BỘ NHỚ ---
 struct BumpingAllocator { next: AtomicUsize }
 unsafe impl GlobalAlloc for BumpingAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
@@ -47,24 +48,24 @@ impl Write for Uart {
     }
 }
 
-// --- KHỞI ĐỘNG ---
+// --- LUỒNG KHỞI ĐỘNG CHÍNH ---
 #[no_mangle]
 pub extern "C" fn _reset_handler() -> ! {
     let mut uart = Uart { base_ptr: 0x4000_c000 as *mut u32 };
     let _ = write!(uart, "\x1b[2J\x1b[H\x1b[32m[OXID RTOS]\x1b[0m Heartbeat active.\n> ");
     
-    // Config SysTick: 120,000 ticks = 10ms (giả định 12MHz)
+    // Cấu hình SysTick (Nhịp tim hệ thống)
     unsafe {
         let systick = 0xE000_E010 as *mut u32;
-        core::ptr::write_volatile(systick.add(1), 120_000);
-        core::ptr::write_volatile(systick.add(2), 0);
-        core::ptr::write_volatile(systick, 0x07);
+        core::ptr::write_volatile(systick.add(1), 120_000); // 10ms (12MHz)
+        core::ptr::write_volatile(systick.add(2), 0);       // Reset count
+        core::ptr::write_volatile(systick, 0x07);          // Bật ngắt
     }
 
     loop {
         let key = uart.getc();
         if key != 0 { let _ = write!(uart, "\x1b[36m{}\x1b[0m", key as char); }
-        unsafe { core::arch::asm!("wfi"); }
+        unsafe { core::arch::asm!("wfi"); } // Chờ nhịp tim tiếp theo
     }
 }
 
