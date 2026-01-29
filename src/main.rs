@@ -8,40 +8,33 @@ use core::fmt::Write;
 use core::alloc::{GlobalAlloc, Layout};
 use core::sync::atomic::{AtomicUsize, AtomicU32, Ordering};
 
-// --- QUẢN LÝ BỘ NHỚ (HEAP) ---
+// --- CẤU HÌNH BỘ NHỚ ---
 const HEAP_START: usize = 0x2000_2000;
-const HEAP_SIZE: usize = 32 * 1024; // 32KB bộ nhớ cho OS
+const HEAP_SIZE: usize = 32 * 1024; // 32KB Heap
 
 struct BumpingAllocator { next: AtomicUsize }
 unsafe impl GlobalAlloc for BumpingAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         let current = self.next.load(Ordering::SeqCst);
-        if current + layout.size() > HEAP_START + HEAP_SIZE {
-            return core::ptr::null_mut(); // Chặn lỗi tràn bộ nhớ
-        }
+        if current + layout.size() > HEAP_START + HEAP_SIZE { return core::ptr::null_mut(); }
         self.next.fetch_add(layout.size(), Ordering::SeqCst) as *mut u8
     }
     unsafe fn dealloc(&self, _ptr: *mut u8, _layout: Layout) {}
 }
-
 #[global_allocator]
-static ALLOCATOR: BumpingAllocator = BumpingAllocator { 
-    next: AtomicUsize::new(HEAP_START) 
-};
+static ALLOCATOR: BumpingAllocator = BumpingAllocator { next: AtomicUsize::new(HEAP_START) };
 
-// --- NHỊP TIM HỆ THỐNG (HEARTBEAT) ---
+// --- NHỊP TIM & UART ---
 static TICK_COUNT: AtomicU32 = AtomicU32::new(0);
-
 #[no_mangle]
 pub extern "C" fn SysTick_Handler() {
     let count = TICK_COUNT.fetch_add(1, Ordering::SeqCst);
-    if count % 100 == 0 { // In dấu chấm mỗi 1 giây (100 * 10ms)
+    if count % 100 == 0 {
         let mut uart = Uart { base_ptr: 0x4000_c000 as *mut u32 };
         let _ = write!(uart, "\x1b[33m.\x1b[0m"); 
     }
 }
 
-// --- UART DRIVER ---
 struct Uart { base_ptr: *mut u32 }
 impl Uart {
     fn getc(&self) -> u8 {
@@ -57,56 +50,57 @@ impl Write for Uart {
     }
 }
 
-// --- KHỞI TẠO HỆ THỐNG ---
 fn init_systick(ticks: u32) {
-    let systick_base = 0xE000_E010 as *mut u32;
     unsafe {
-        core::ptr::write_volatile(systick_base.add(1), ticks);
-        core::ptr::write_volatile(systick_base.add(2), 0);
-        core::ptr::write_volatile(systick_base, 0x07); // Enable + Interrupt
+        let s = 0xE000_E010 as *mut u32;
+        core::ptr::write_volatile(s.add(1), ticks);
+        core::ptr::write_volatile(s.add(2), 0);
+        core::ptr::write_volatile(s, 0x07);
     }
 }
 
 #[no_mangle]
 pub extern "C" fn _reset_handler() -> ! {
     let mut uart = Uart { base_ptr: 0x4000_c000 as *mut u32 };
-    let _ = write!(uart, "\x1b[2J\x1b[H\x1b[32m[OXID RTOS v1.0]\x1b[0m System Ready.\n> ");
-    
-    init_systick(120_000); // 10ms heartbeat
-
-    let mut buffer = [0u8; 32]; 
+    let _ = write!(uart, "\x1b[2J\x1b[H\x1b[32m[OXID RTOS v1.0]\x1b[0m\n> ");
+    init_systick(120_000);
+    let mut buffer = [0u8; 32];
     let mut pos = 0;
 
     loop {
         let key = uart.getc();
         if key != 0 {
             match key {
-                b'\r' | b'\n' => { // Xử lý khi nhấn Enter
+                b'\r' | b'\n' => {
                     let _ = write!(uart, "\n");
                     let cmd = core::str::from_utf8(&buffer[..pos]).unwrap_or("");
                     match cmd {
                         "cls" => { let _ = write!(uart, "\x1b[2J\x1b[H"); }
-                        "ver" => { let _ = write!(uart, "OXID RTOS Kernel v1.0 (Rust)\n"); }
+                        "ver" => { let _ = write!(uart, "OXID RTOS Kernel v1.0\n"); }
                         "free" => {
                             let used = ALLOCATOR.next.load(Ordering::SeqCst) - HEAP_START;
-                            let free = HEAP_SIZE - used;
-                            let _ = write!(uart, "Heap: {}/{} bytes used ({} bytes free)\n", used, HEAP_SIZE, free);
+                            let _ = write!(uart, "Used: {}/{} bytes\n", used, HEAP_SIZE);
+                        }
+                        "test" => { // Lệnh "cắn" 1KB RAM
+                            let layout = Layout::from_size_align(1024, 4).unwrap();
+                            let ptr = unsafe { ALLOCATOR.alloc(layout) };
+                            if !ptr.is_null() { let _ = write!(uart, "Allocated 1024 bytes!\n"); }
+                            else { let _ = write!(uart, "Out of memory!\n"); }
                         }
                         _ => { if pos > 0 { let _ = write!(uart, "Unknown: {}\n", cmd); } }
                     }
-                    pos = 0;
-                    let _ = write!(uart, "> ");
+                    pos = 0; let _ = write!(uart, "> ");
                 }
-                b'\x08' | b'\x7f' => { // Xử lý Backspace
-                    if pos > 0 { pos -= 1; let _ = write!(uart, "\x08 \x08"); }
-                }
-                _ => {
-                    if pos < buffer.len() {
-                        buffer[pos] = key;
-                        pos += 1;
-                        let _ = write!(uart, "{}", key as char);
-                    }
-                }
+                b'\x08' | b'\x7f' => { if pos > 0 { pos -= 1; let _ = write!(uart, "\x08 \x08"); } }
+                _ => { if pos < buffer.len() { buffer[pos] = key; pos += 1; let _ = write!(uart, "{}", key as char); } }
+            }
+        }
+        unsafe { core::arch::asm!("wfi"); }
+    }
+}
+
+#[alloc_error_handler] fn alloc_error(_l: Layout) -> ! { loop {} }
+#[panic_handler] fn panic(_i: &PanicInfo) -> ! { loop {} }
             }
         }
         unsafe { core::arch::asm!("wfi"); }
