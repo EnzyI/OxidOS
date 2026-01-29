@@ -8,7 +8,7 @@ use core::fmt::Write;
 use core::alloc::{GlobalAlloc, Layout};
 use core::sync::atomic::{AtomicUsize, AtomicU32, Ordering};
 
-// --- CẤU HÌNH BỘ NHỚ ---
+// --- QUẢN LÝ BỘ NHỚ ---
 const HEAP_START: usize = 0x2000_2000;
 const HEAP_SIZE: usize = 32 * 1024; 
 
@@ -25,7 +25,7 @@ unsafe impl GlobalAlloc for BumpingAllocator {
 #[global_allocator]
 static ALLOCATOR: BumpingAllocator = BumpingAllocator { next: AtomicUsize::new(HEAP_START) };
 
-// --- NHỊP TIM & UART ---
+// --- UART & NHỊP TIM ---
 static TICK_COUNT: AtomicU32 = AtomicU32::new(0);
 
 #[no_mangle]
@@ -57,6 +57,50 @@ fn init_systick(ticks: u32) {
         let s = 0xE000_E010 as *mut u32;
         core::ptr::write_volatile(s.add(1), ticks);
         core::ptr::write_volatile(s.add(2), 0);
-        core::ptr::write_volatile(s
-#[alloc_error_handler] fn alloc_error(_layout: Layout) -> ! { loop {} }
-#[panic_handler] fn panic(_info: &PanicInfo) -> ! { loop {} }
+        core::ptr::write_volatile(s, 0x07);
+    }
+}
+
+// --- KHỞI ĐỘNG VÀ VÒNG LẶP LỆNH ---
+#[no_mangle]
+pub extern "C" fn _reset_handler() -> ! {
+    let mut uart = Uart { base_ptr: 0x4000_c000 as *mut u32 };
+    let _ = write!(uart, "\x1b[2J\x1b[H\x1b[32m[OXID RTOS v1.0]\x1b[0m\n> ");
+    init_systick(120_000);
+    let mut buffer = [0u8; 32];
+    let mut pos = 0;
+
+    loop {
+        let key = uart.getc();
+        if key != 0 {
+            match key {
+                b'\r' | b'\n' => {
+                    let _ = write!(uart, "\n");
+                    let cmd = core::str::from_utf8(&buffer[..pos]).unwrap_or("");
+                    match cmd {
+                        "cls" => { let _ = write!(uart, "\x1b[2J\x1b[H"); }
+                        "ver" => { let _ = write!(uart, "OXID RTOS v1.0\n"); }
+                        "free" => {
+                            let used = ALLOCATOR.next.load(Ordering::SeqCst) - HEAP_START;
+                            let _ = write!(uart, "Used: {}/{} bytes\n", used, HEAP_SIZE);
+                        }
+                        "test" => {
+                            let layout = Layout::from_size_align(1024, 4).unwrap();
+                            let ptr = unsafe { ALLOCATOR.alloc(layout) };
+                            if !ptr.is_null() { let _ = write!(uart, "Allocated 1KB!\n"); }
+                            else { let _ = write!(uart, "OOM!\n"); }
+                        }
+                        _ => { if pos > 0 { let _ = write!(uart, "Unknown\n"); } }
+                    }
+                    pos = 0; let _ = write!(uart, "> ");
+                }
+                b'\x08' | b'\x7f' => { if pos > 0 { pos -= 1; let _ = write!(uart, "\x08 \x08"); } }
+                _ => { if pos < buffer.len() { buffer[pos] = key; pos += 1; let _ = write!(uart, "{}", key as char); } }
+            }
+        }
+        unsafe { core::arch::asm!("wfi"); }
+    }
+}
+
+#[alloc_error_handler] fn alloc_error(_l: Layout) -> ! { loop {} }
+#[panic_handler] fn panic(_i: &PanicInfo) -> ! { loop {} }
