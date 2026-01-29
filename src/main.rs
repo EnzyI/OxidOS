@@ -7,8 +7,9 @@ use core::panic::PanicInfo;
 use core::fmt::Write;
 use core::alloc::{GlobalAlloc, Layout};
 use core::sync::atomic::{AtomicUsize, AtomicU32, Ordering};
+use core::hint::black_box; // Ngăn compiler tối ưu hóa lệnh test
 
-// --- QUẢN LÝ BỘ NHỚ ---
+// --- CẤU HÌNH BỘ NHỚ ---
 const HEAP_START: usize = 0x2000_2000;
 const HEAP_SIZE: usize = 32 * 1024; 
 
@@ -31,7 +32,7 @@ static TICK_COUNT: AtomicU32 = AtomicU32::new(0);
 #[no_mangle]
 pub extern "C" fn SysTick_Handler() {
     let count = TICK_COUNT.fetch_add(1, Ordering::SeqCst);
-    if count % 100 == 0 {
+    if count % 100 == 0 { // In dấu chấm vàng mỗi 1 giây
         let mut uart = Uart { base_ptr: 0x4000_c000 as *mut u32 };
         let _ = write!(uart, "\x1b[33m.\x1b[0m"); 
     }
@@ -65,8 +66,9 @@ fn init_systick(ticks: u32) {
 #[no_mangle]
 pub extern "C" fn _reset_handler() -> ! {
     let mut uart = Uart { base_ptr: 0x4000_c000 as *mut u32 };
-    let _ = write!(uart, "\x1b[2J\x1b[H\x1b[32m[OXID RTOS v1.0]\x1b[0m\n> ");
-    init_systick(120_000);
+    let _ = write!(uart, "\x1b[2J\x1b[H\x1b[32m[OXID RTOS v1.0]\x1b[0m Ready.\n> ");
+    init_systick(120_000); // 10ms
+    
     let mut buffer = [0u8; 32];
     let mut pos = 0;
 
@@ -79,18 +81,25 @@ pub extern "C" fn _reset_handler() -> ! {
                     let cmd = core::str::from_utf8(&buffer[..pos]).unwrap_or("");
                     match cmd {
                         "cls" => { let _ = write!(uart, "\x1b[2J\x1b[H"); }
-                        "ver" => { let _ = write!(uart, "OXID RTOS v1.0\n"); }
+                        "ver" => { let _ = write!(uart, "OXID RTOS v1.0.0 (Rust)\n"); }
                         "free" => {
                             let used = ALLOCATOR.next.load(Ordering::SeqCst) - HEAP_START;
-                            let _ = write!(uart, "Used: {}/{} bytes\n", used, HEAP_SIZE);
+                            let _ = write!(uart, "Heap Used: {}/{} bytes\n", used, HEAP_SIZE);
                         }
                         "test" => {
                             let layout = Layout::from_size_align(1024, 4).unwrap();
                             let ptr = unsafe { ALLOCATOR.alloc(layout) };
-                            if !ptr.is_null() { let _ = write!(uart, "Allocated 1KB!\n"); }
-                            else { let _ = write!(uart, "OOM!\n"); }
+                            if !ptr.is_null() {
+                                black_box(ptr); // Ép compiler không được bỏ lệnh này
+                                let _ = write!(uart, "Successfully allocated 1024 bytes!\n");
+                            } else { let _ = write!(uart, "Error: Out of memory!\n"); }
                         }
-                        _ => { if pos > 0 { let _ = write!(uart, "Unknown\n"); } }
+                        "peek" => {
+                            let addr = 0x2000_0000 as *const u32;
+                            let val = unsafe { core::ptr::read_volatile(addr) };
+                            let _ = write!(uart, "Memory at 0x20000000: 0x{:08X}\n", val);
+                        }
+                        _ => { if pos > 0 { let _ = write!(uart, "Unknown command: {}\n", cmd); } }
                     }
                     pos = 0; let _ = write!(uart, "> ");
                 }
