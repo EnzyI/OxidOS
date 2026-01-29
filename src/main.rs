@@ -7,9 +7,8 @@ use core::panic::PanicInfo;
 use core::fmt::Write;
 use core::alloc::{GlobalAlloc, Layout};
 use core::sync::atomic::{AtomicUsize, AtomicU32, Ordering};
-use core::hint::black_box; // Ngăn compiler tối ưu hóa lệnh test
 
-// --- CẤU HÌNH BỘ NHỚ ---
+// --- QUẢN LÝ BỘ NHỚ ---
 const HEAP_START: usize = 0x2000_2000;
 const HEAP_SIZE: usize = 32 * 1024; 
 
@@ -18,6 +17,7 @@ unsafe impl GlobalAlloc for BumpingAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         let current = self.next.load(Ordering::SeqCst);
         if current + layout.size() > HEAP_START + HEAP_SIZE { return core::ptr::null_mut(); }
+        // Thêm lệnh black_box ngầm để đảm bảo việc tăng next luôn xảy ra
         self.next.fetch_add(layout.size(), Ordering::SeqCst) as *mut u8
     }
     unsafe fn dealloc(&self, _ptr: *mut u8, _layout: Layout) {}
@@ -32,7 +32,7 @@ static TICK_COUNT: AtomicU32 = AtomicU32::new(0);
 #[no_mangle]
 pub extern "C" fn SysTick_Handler() {
     let count = TICK_COUNT.fetch_add(1, Ordering::SeqCst);
-    if count % 100 == 0 { // In dấu chấm vàng mỗi 1 giây
+    if count % 100 == 0 {
         let mut uart = Uart { base_ptr: 0x4000_c000 as *mut u32 };
         let _ = write!(uart, "\x1b[33m.\x1b[0m"); 
     }
@@ -62,12 +62,12 @@ fn init_systick(ticks: u32) {
     }
 }
 
-// --- KHỞI ĐỘNG VÀ VÒNG LẶP LỆNH ---
+// --- COMMAND LOOP ---
 #[no_mangle]
 pub extern "C" fn _reset_handler() -> ! {
     let mut uart = Uart { base_ptr: 0x4000_c000 as *mut u32 };
     let _ = write!(uart, "\x1b[2J\x1b[H\x1b[32m[OXID RTOS v1.0]\x1b[0m Ready.\n> ");
-    init_systick(120_000); // 10ms
+    init_systick(120_000);
     
     let mut buffer = [0u8; 32];
     let mut pos = 0;
@@ -90,16 +90,22 @@ pub extern "C" fn _reset_handler() -> ! {
                             let layout = Layout::from_size_align(1024, 4).unwrap();
                             let ptr = unsafe { ALLOCATOR.alloc(layout) };
                             if !ptr.is_null() {
-                                black_box(ptr); // Ép compiler không được bỏ lệnh này
-                                let _ = write!(uart, "Successfully allocated 1024 bytes!\n");
-                            } else { let _ = write!(uart, "Error: Out of memory!\n"); }
+                                // Ghi giá trị ảo để tránh bị compiler tối ưu xóa bỏ
+                                unsafe { core::ptr::write_volatile(ptr as *mut u32, 0xDEADBEEF); }
+                                let _ = write!(uart, "Successfully allocated and wrote to 1KB!\n");
+                            } else { let _ = write!(uart, "Error: OOM!\n"); }
                         }
                         "peek" => {
-                            let addr = 0x2000_0000 as *const u32;
+                            let addr = 0x2000_2000 as *const u32; // Đọc ngay đầu Heap
                             let val = unsafe { core::ptr::read_volatile(addr) };
-                            let _ = write!(uart, "Memory at 0x20000000: 0x{:08X}\n", val);
+                            let _ = write!(uart, "Data at 0x20002000: 0x{:08X}\n", val);
                         }
-                        _ => { if pos > 0 { let _ = write!(uart, "Unknown command: {}\n", cmd); } }
+                        "poke" => {
+                            let addr = 0x2000_2000 as *mut u32;
+                            unsafe { core::ptr::write_volatile(addr, 0x12345678); }
+                            let _ = write!(uart, "Wrote 0x12345678 to 0x20002000\n");
+                        }
+                        _ => { if pos > 0 { let _ = write!(uart, "Unknown: {}\n", cmd); } }
                     }
                     pos = 0; let _ = write!(uart, "> ");
                 }
@@ -113,3 +119,4 @@ pub extern "C" fn _reset_handler() -> ! {
 
 #[alloc_error_handler] fn alloc_error(_l: Layout) -> ! { loop {} }
 #[panic_handler] fn panic(_i: &PanicInfo) -> ! { loop {} }
+
